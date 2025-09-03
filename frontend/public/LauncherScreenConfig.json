@@ -1,0 +1,110 @@
+{
+  "schemaVersion": "1.0.0",
+  "meta": {
+    "app": "LauncherScreen Logic System v1.0",
+    "build": "2025-01-15T10:30:00Z",
+    "author": "LauncherScreen Phase 1 Implementation",
+    "note": "Auto-generated from LauncherScreenConfig.ts"
+  },
+  "backgrounds": [
+    {
+      "id": "BG2",
+      "src": "/Asset/BG/BG2.png",
+      "xPct": 40,
+      "yPct": 50,
+      "scalePct": 70,
+      "opacityPct": 100,
+      "z": 0,
+      "fit": "contain"
+    },
+    {
+      "id": "BG3",
+      "src": "/Asset/BG/BG3.png",
+      "xPct": 65,
+      "yPct": 50,
+      "scalePct": 55,
+      "opacityPct": 90,
+      "z": 1,
+      "fit": "contain"
+    }
+  ],
+  "layers": [],
+  "defaults": {
+    "layer": {
+      "enabled": true,
+      "zHint": 10
+    },
+    "logic2": {
+      "enabled": true,
+      "scalePct": 100,
+      "minScalePct": 10,
+      "maxScalePct": 400,
+      "center": { "xPct": 50, "yPct": 50 },
+      "marginPct": 5,
+      "rounding": "round"
+    },
+    "logic2A": {
+      "enabled": false,
+      "rotationMode": "anchored",
+      "base": { "xPct": 0, "yPct": 50 },
+      "tip": { "xPct": 0, "yPct": -50 },
+      "pivot": "base"
+    },
+    "logic3": {
+      "enabled": false,
+      "fullSpinPerMinute": 1,
+      "direction": "cw",
+      "maxFps": 45,
+      "easing": "linear",
+      "pivotSource": "logic2A-base"
+    },
+    "logic3A": {
+      "enabled": false,
+      "fullOrbitPerMinute": 0.5,
+      "direction": "cw",
+      "radiusPct": 20,
+      "orbitPoint": "dotmark",
+      "startPhase": "auto",
+      "maxFps": 45
+    },
+    "clock": {
+      "enabled": false,
+      "mode": null,
+      "role": "minute",
+      "secondMode": "smooth",
+      "offsetDeg": 0,
+      "sync": "device"
+    },
+    "effect": {
+      "enabled": false,
+      "visibility": "visible",
+      "opacityPct": 100,
+      "blend": "normal",
+      "blurPx": 0,
+      "brightnessPct": 100,
+      "contrastPct": 100,
+      "saturatePct": 100,
+      "grayscalePct": 0,
+      "hueRotateDeg": 0,
+      "zIndexHint": 0
+    },
+    "effect3d": {
+      "enabled": false,
+      "mode": "basic",
+      "depthZ": 0,
+      "parallaxStrength": 0.5,
+      "material": {
+        "type": "basic",
+        "metalness": 0,
+        "roughness": 1
+      },
+      "camera": {
+        "fovDeg": 75,
+        "near": 0.1,
+        "far": 1000
+      },
+      "maxFps": 30,
+      "quality": "auto"
+    }
+  }
+}
