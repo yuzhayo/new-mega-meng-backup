@@ -1,0 +1,144 @@
+Document 3 Complete Self-Contained Guide Requirements
+Missing Critical Sections:
+1. PROJECT CONTEXT BLOCK
+CURRENT STATE:
+- Tech Stack: React 18 + TypeScript + Vite + Tailwind CSS
+- File Structure: /Core/Launcher/ with existing LauncherScreen.tsx, LauncherHooks.tsx, LauncherBtn.tsx
+- Assets: BG2.png, BG3.png in /Asset/ folder (working, tested)
+- Dependencies: Already installed, don't add new ones without permission
+- Origin System: EXISTS in old LauncherScreen.tsx - MUST port exactly, don't rewrite
+2. EXACT SPECIFICATIONS
+UNITS & VALUES:
+- Scale: vmin only, range 1-400
+- Position: % only, range 0-100  
+- Rotation: degrees, range 0-360
+- FPS: clamp 15-60, default 45
+- Debounce: exactly 50ms for resize
+- Z-order: BG=0-10, Dot=10, Gesture=40, Btn=50, Composer=60+
+
+MATH FUNCTIONS:
+clamp(v,min,max) = Math.max(min, Math.min(max, v))
+normalizeAngle(deg) = ((deg % 360) + 360) % 360
+3. FORBIDDEN ACTIONS
+DO NOT:
+- Add new dependencies without explicit permission
+- Create new features not in guide
+- Modify existing LauncherBtn.tsx or LauncherHooks.tsx behavior
+- Change file locations or naming patterns
+- Add animations not specified
+- Use libraries other than Three.js for 3D
+- Create UI components not in guide
+4. EXACT CODE TEMPLATES
+FILE HEADER FORMAT:
+// File: LauncherScreenLogic2ImageBasic.ts
+// IMPORT SECTION
+import { ... } from "...";
+
+// TYPES SECTION  
+export interface Config { ... }
+
+// LOGIC SECTION
+export function applyLogic2(...) { ... }
+5. VERIFICATION COMMANDS
+TESTING EACH PHASE:
+npm run dev
+- Check browser console: 0 errors
+- Visual check: BG2/BG3 visible, centered red dot
+- Triple-tap: button appears/disappears
+- Resize window: no jitter, smooth scaling
+6. EXACT ERROR HANDLING
+ERROR PATTERNS:
+try {
+  // logic here
+} catch (error) {
+  console.warn(`[Logic2] Failed for layer ${layer.id}:`, error);
+  return fallbackValue;
+}
+
+LOG FORMAT: [ModuleName] message
+FALLBACK ORDER: computed → default → skip layer
+7. CURRENT FILE CONTENTS
+Include exact current code from:
+
+LauncherScreen.tsx (origin provider logic)
+LauncherHooks.tsx (gesture implementation)
+LauncherBtn.tsx (button component)
+Package.json dependencies
+8. SUCCESS CRITERIA CHECKLIST
+PHASE COMPLETION:
+□ npm run dev works without errors
+□ Visual output matches expected behavior  
+□ No new console warnings
+□ Performance: >30 FPS on resize
+□ Git commit with exact message format
+9. DEPENDENCY CONSTRAINTS
+ALLOWED IMPORTS:
+- React hooks from 'react'
+- Three.js from 'three' (Phase 7+ only)
+- Existing local files only
+
+FORBIDDEN:
+- External animation libraries
+- New UI component libraries
+- Additional state management
+- CSS-in-JS libraries
+10. COMPLETE DEFAULTS TABLE
+Every configurable value with exact defaults, ranges, and fallbacks.
+
+Bottom Line: Guide needs to be 100% prescriptive cookbook with zero interpretation needed. Current guide is ~60% complete for autonomous AI implementation.
+
+Next Steps for 100% Complete Guide
+IMMEDIATE ACTIONS NEEDED:
+1. CREATE CONTEXT HEADER
+Add to top of guide:
+- Current file contents (LauncherScreen.tsx, LauncherHooks.tsx, LauncherBtn.tsx)
+- Exact package.json dependencies
+- Asset inventory (BG2.png, BG3.png locations)
+- Existing folder structure
+2. ADD UTILITY FUNCTIONS LIBRARY
+Create appendix with exact implementations:
+- clamp(), normalizeAngle(), mapToPx()
+- Vector math (calculateAngle, intersectRayRect)
+- Debounce function
+- FPS counter class
+3. COMPLETE SPECIFICATIONS TABLE
+Every value with exact constraints:
+- scalePct: 1-400, default 100
+- center: 0-100%, default 50%
+- marginPct: 0-50%, default 5%
+- maxFps: 15-60, default 45
+- All 50+ config parameters
+4. CODE TEMPLATES FOR EACH FILE
+Full skeleton for all 30+ files:
+- Exact imports
+- Interface definitions  
+- Function signatures
+- Error handling blocks
+5. TESTING COMMANDS & CRITERIA
+Per-phase verification:
+- Exact npm commands
+- Browser dev tools checks
+- Visual comparison screenshots
+- Performance thresholds
+6. FORBIDDEN ACTIONS LIST
+Explicit "DON'T" list:
+- Don't add dependencies
+- Don't modify existing files beyond specified changes
+- Don't create new features
+- Don't change naming patterns
+7. CURRENT STATE SNAPSHOT
+Include actual code from:
+- LauncherScreen.tsx (full file)
+- LauncherHooks.tsx (full file) 
+- LauncherBtn.tsx (full file)
+- launcher-bg.json (asset references)
+TIME ESTIMATE: 4-6 hours to add all missing sections.
+
+PRIORITY ORDER:
+
+Context header + current code
+Complete specifications table
+Utility functions library
+Code templates
+Testing procedures
+Result: Guide becomes executable cookbook requiring zero interpretation.

@@ -1,0 +1,567 @@
+Document 7: Code Templates & Testing Guide
+FILE TEMPLATES
+Template: Logic Module Structure
+// File: LauncherScreenLogic[X][Name].ts
+// IMPORT SECTION
+import { createLogger } from "./LauncherScreenLogicUtilsLogging";
+import { clamp, normalizeAngle } from "./LauncherScreenLogicUtilsMath";
+import { Point2D, calculateAngle } from "./LauncherScreenLogicUtilsGeometry";
+import { OriginState } from "./LauncherScreenLogicUtilsUnits";
+import type { [ConfigType], LayerConfig } from "./LauncherScreenConfigSchema";
+
+// TYPES SECTION
+export interface [LogicName]State {
+  // State properties here
+}
+
+export interface [LogicName]Result {
+  // Result properties here
+}
+
+// CONSTANTS SECTION
+const logger = createLogger('[LogicName]');
+const DEFAULT_[SETTING] = [value];
+
+// LOGIC SECTION
+export function apply[LogicName](
+  layer: LayerConfig,
+  currentState: [InputState],
+  origin: OriginState,
+  deltaMs?: number
+): [LogicName]Result {
+  // Validation
+  if (!layer.[configField]?.enabled) {
+    return currentState as [LogicName]Result;
+  }
+
+  try {
+    // Main logic implementation
+    const config = layer.[configField]!;
+    
+    // ... logic here ...
+    
+    return {
+      ...currentState,
+      // ... updated properties ...
+    };
+    
+  } catch (error) {
+    logger.errorOnce(`Failed for layer ${layer.id}`, error);
+    return currentState as [LogicName]Result;
+  }
+}
+
+// HELPER FUNCTIONS (if needed)
+function [helperFunction](): void {
+  // Helper implementation
+}
+SPECIFIC FILE TEMPLATES
+LauncherScreenLogic2ImageBasic.ts
+// File: LauncherScreenLogic2ImageBasic.ts
+// IMPORT SECTION
+import { createLogger } from "./LauncherScreenLogicUtilsLogging";
+import { clamp, debounce } from "./LauncherScreenLogicUtilsPerformance";
+import { OriginState, pctToPx, clampToBounds } from "./LauncherScreenLogicUtilsUnits";
+import { validateNumber, VALIDATION_RANGES } from "./LauncherScreenLogicUtilsValidation";
+import type { Logic2Config, LayerConfig } from "./LauncherScreenConfigSchema";
+
+// TYPES SECTION
+export interface TransformState {
+  scale: number;
+  x: number;
+  y: number;
+  rotation: number;
+}
+
+export interface Logic2State extends TransformState {
+  centerClamped: { x: number; y: number };
+  scaleClamped: number;
+}
+
+// CONSTANTS SECTION
+const logger = createLogger('Logic2');
+const RESIZE_DEBOUNCE_MS = 50;
+
+// LOGIC SECTION
+export function applyLogic2(
+  layer: LayerConfig,
+  origin: OriginState
+): Logic2State {
+  if (!layer.logic2?.enabled) {
+    return {
+      scale: 1,
+      x: origin.centerX,
+      y: origin.centerY,
+      rotation: 0,
+      centerClamped: { x: origin.centerX, y: origin.centerY },
+      scaleClamped: 100
+    };
+  }
+
+  try {
+    const config = layer.logic2;
+    
+    // Validate and clamp scale
+    const scaleResult = validateNumber(
+      config.scalePct,
+      config.minScalePct || VALIDATION_RANGES.scalePct.min,
+      config.maxScalePct || VALIDATION_RANGES.scalePct.max,
+      100,
+      'scalePct'
+    );
+    
+    // Convert center % to pixels
+    const centerPx = pctToPx(origin, config.center.xPct, config.center.yPct);
+    
+    // Apply margin clamp
+    const marginPx = (config.marginPct / 100) * Math.min(origin.width, origin.height);
+    const clampedCenter = clampToBounds(centerPx, origin, marginPx);
+    
+    return {
+      scale: scaleResult.value / 100,
+      x: clampedCenter.left,
+      y: clampedCenter.top,
+      rotation: 0, // Logic 2A handles rotation
+      centerClamped: { x: clampedCenter.left, y: clampedCenter.top },
+      scaleClamped: scaleResult.value
+    };
+    
+  } catch (error) {
+    logger.errorOnce(`Failed for layer ${layer.id}`, error);
+    return {
+      scale: 1,
+      x: origin.centerX,
+      y: origin.centerY,
+      rotation: 0,
+      centerClamped: { x: origin.centerX, y: origin.centerY },
+      scaleClamped: 100
+    };
+  }
+}
+
+// RESIZE HANDLER
+export const createResizeHandler = (
+  updateCallback: () => void
+) => {
+  return debounce(updateCallback, RESIZE_DEBOUNCE_MS);
+};
+LauncherScreenLogic2AAnchoredRotate.ts
+// File: LauncherScreenLogic2AAnchoredRotate.ts
+// IMPORT SECTION
+import { createLogger } from "./LauncherScreenLogicUtilsLogging";
+import { normalizeAngle, degToRad } from "./LauncherScreenLogicUtilsMath";
+import { Point2D, calculateAngle, intersectRayRect, pointsEqual } from "./LauncherScreenLogicUtilsGeometry";
+import { validatePoint2D, validateEnum } from "./LauncherScreenLogicUtilsValidation";
+import type { Logic2AConfig, LayerConfig } from "./LauncherScreenConfigSchema";
+import type { TransformState } from "./LauncherScreenLogic2ImageBasic";
+
+// TYPES SECTION
+export interface Logic2AState extends TransformState {
+  resolvedBase: Point2D;
+  resolvedTip: Point2D;
+  pivot: Point2D;
+  deltaDeg: number;
+}
+
+export interface ImageDimensions {
+  width: number;
+  height: number;
+}
+
+// CONSTANTS SECTION
+const logger = createLogger('Logic2A');
+const TARGET_ANGLE_DEG = 90;
+
+// LOGIC SECTION
+export function applyLogic2A(
+  layer: LayerConfig,
+  currentTransform: TransformState,
+  imageDim: ImageDimensions
+): Logic2AState {
+  if (!layer.logic2A?.enabled || layer.logic2A.rotationMode !== 'anchored') {
+    return {
+      ...currentTransform,
+      resolvedBase: { x: 0, y: 0 },
+      resolvedTip: { x: 0, y: 0 },
+      pivot: { x: 0, y: 0 },
+      deltaDeg: 0
+    };
+  }
+
+  try {
+    const config = layer.logic2A;
+    
+    // Validate anchor points
+    const baseResult = validatePoint2D(config.base, { x: 0, y: 50 }, 'base');
+    const tipResult = validatePoint2D(config.tip, { x: 0, y: -50 }, 'tip');
+    
+    // Resolve anchors (extend to edge if out of bounds)
+    const resolvedBase = resolveAnchor(baseResult.value, imageDim);
+    const resolvedTip = resolveAnchor(tipResult.value, imageDim);
+    
+    // Check for coincident points
+    if (pointsEqual(resolvedBase, resolvedTip)) {
+      logger.warnOnce(`Base and tip are coincident for layer ${layer.id}, skipping rotation`);
+      return {
+        ...currentTransform,
+        resolvedBase,
+        resolvedTip,
+        pivot: resolvedBase,
+        deltaDeg: 0
+      };
+    }
+    
+    // Calculate current angle and delta
+    const currentAngle = calculateAngle(resolvedBase, resolvedTip);
+    const deltaAngle = normalizeAngle(TARGET_ANGLE_DEG - currentAngle);
+    
+    // Determine pivot point
+    const pivot = config.pivot === 'base' ? resolvedBase : { x: 0, y: 0 };
+    
+    return {
+      ...currentTransform,
+      rotation: currentTransform.rotation + deltaAngle,
+      resolvedBase,
+      resolvedTip,
+      pivot,
+      deltaDeg: deltaAngle
+    };
+    
+  } catch (error) {
+    logger.errorOnce(`Failed for layer ${layer.id}`, error);
+    return {
+      ...currentTransform,
+      resolvedBase: { x: 0, y: 0 },
+      resolvedTip: { x: 0, y: 0 },
+      pivot: { x: 0, y: 0 },
+      deltaDeg: 0
+    };
+  }
+}
+
+// HELPER FUNCTIONS
+function resolveAnchor(anchorPct: Point2D, imageDim: ImageDimensions): Point2D {
+  const bounds = {
+    x: -imageDim.width / 2,
+    y: -imageDim.height / 2,
+    width: imageDim.width,
+    height: imageDim.height
+  };
+  
+  // Convert percentage to pixels (relative to image center)
+  const anchorPx: Point2D = {
+    x: (anchorPct.x / 100) * imageDim.width,
+    y: (anchorPct.y / 100) * imageDim.height
+  };
+  
+  // Check if anchor is within bounds
+  const halfW = imageDim.width / 2;
+  const halfH = imageDim.height / 2;
+  
+  if (Math.abs(anchorPx.x) <= halfW && Math.abs(anchorPx.y) <= halfH) {
+    return anchorPx;
+  }
+  
+  // Extend to edge
+  return intersectRayRect({ x: 0, y: 0 }, anchorPx, bounds);
+}
+LauncherScreenLogicDriverTime.ts
+// File: LauncherScreenLogicDriverTime.ts
+// IMPORT SECTION
+import { createLogger } from "./LauncherScreenLogicUtilsLogging";
+import { clamp, clampDelta } from "./LauncherScreenLogicUtilsPerformance";
+
+// TYPES SECTION
+export interface TimeState {
+  now: number;
+  deltaMs: number;
+  totalMs: number;
+}
+
+export type TickCallback = (timeState: TimeState) => void;
+
+// CONSTANTS SECTION
+const logger = createLogger('TimeDriver');
+const DEFAULT_MAX_FPS = 45;
+const MAX_DELTA_MS = 100;
+
+// LOGIC SECTION
+export class TimeDriver {
+  private lastTime = 0;
+  private accumulatedTime = 0;
+  private totalTime = 0;
+  private targetInterval: number;
+  private isRunning = false;
+  private rafId: number | null = null;
+
+  constructor(maxFps = DEFAULT_MAX_FPS) {
+    this.targetInterval = 1000 / clamp(maxFps, 15, 60);
+  }
+
+  start(callback: TickCallback): void {
+    if (this.isRunning) {
+      logger.warnOnce('TimeDriver already running');
+      return;
+    }
+
+    this.isRunning = true;
+    this.lastTime = performance.now();
+    this.tick(callback);
+  }
+
+  stop(): void {
+    this.isRunning = false;
+    if (this.rafId !== null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+  }
+
+  setMaxFps(fps: number): void {
+    this.targetInterval = 1000 / clamp(fps, 15, 60);
+  }
+
+  private tick(callback: TickCallback): void {
+    if (!this.isRunning) return;
+
+    const now = performance.now();
+    const rawDelta = now - this.lastTime;
+    const deltaMs = clampDelta(rawDelta, MAX_DELTA_MS);
+    
+    this.lastTime = now;
+    this.accumulatedTime += deltaMs;
+    this.totalTime += deltaMs;
+
+    if (this.accumulatedTime >= this.targetInterval) {
+      const timeState: TimeState = {
+        now,
+        deltaMs: this.accumulatedTime,
+        totalMs: this.totalTime
+      };
+      
+      try {
+        callback(timeState);
+      } catch (error) {
+        logger.error('Tick callback failed', error);
+      }
+      
+      this.accumulatedTime = 0;
+    }
+
+    this.rafId = requestAnimationFrame(() => this.tick(callback));
+  }
+
+  reset(): void {
+    this.totalTime = 0;
+    this.accumulatedTime = 0;
+    this.lastTime = performance.now();
+  }
+}
+
+// SINGLETON INSTANCE
+export const globalTimeDriver = new TimeDriver();
+TESTING COMMANDS & PROCEDURES
+Per-Phase Testing Commands
+# PRE-PHASE Testing
+npm run dev
+# ✅ Check: App loads without errors
+# ✅ Visual: BG2/BG3 visible, red dot at center
+# ✅ Interaction: Triple-tap shows/hides button
+# ✅ Responsive: Resize window, no jitter
+
+# PHASE 1 Testing  
+npm run typecheck
+npm run lint
+npm run dev
+# ✅ Check: Config.json auto-generated
+# ✅ Edit: Modify Config.ts → see live changes
+# ✅ Validation: Invalid values → console warnings
+
+# PHASE 2 Testing
+npm run dev
+# ✅ Pipeline: Same visual output via Composer
+# ✅ Performance: No FPS drop from baseline
+# ✅ Dev tools: Check React profiler
+
+# PHASE 3 Testing
+npm run dev
+# ✅ Scaling: Resize window → smooth scaling
+# ✅ Boundaries: Center stays within margin
+# ✅ Performance: >30 FPS during resize
+
+# PHASE 4 Testing
+npm run dev
+# ✅ Rotation: Set base/tip → PNG rotates to 90°
+# ✅ Edge cases: Anchors outside bounds
+# ✅ Validation: base === tip → no rotation
+
+# PHASE 5 Testing
+npm run dev
+# ✅ Motion: Spin/orbit active → smooth animation
+# ✅ FPS: Throttling works at set limits
+# ✅ Math: No jitter or sudden jumps
+
+# PHASE 6 Testing
+npm run dev
+# ✅ Clock: Hands move with real time
+# ✅ Priority: Clock overrides spin/orbit
+# ✅ Accuracy: Compare with system clock
+
+# PHASE 7 Testing
+npm run dev
+# ✅ Effects: Visual filters apply correctly
+# ✅ 3D: WebGL works or falls back to 2D
+# ✅ Performance: Quality auto-scaling
+
+# PHASE 8 Testing
+npm run dev
+npm run test
+npm run build
+# ✅ Debug: Dev tools show FPS/memory
+# ✅ Errors: Error boundaries prevent crashes
+# ✅ Production: Build succeeds, no warnings
+Success Criteria Checklists
+PRE-PHASE Success Criteria ✅
+□ npm run dev works without console errors
+□ Background images BG2/BG3 render at correct positions
+□ Red dot appears at exact screen center
+□ Triple-tap gesture toggles button visibility
+□ Window resize maintains proportions, no jitter
+□ File structure matches naming conventions
+□ Origin mapping matches old implementation exactly
+PHASE 1 Success Criteria ✅
+□ Config.ts changes auto-generate Config.json
+□ Hot-reload updates UI without page refresh
+□ Validator clamps invalid values with console warnings
+□ Duplicate IDs get suffix (.a, .b, .c)
+□ Invalid paths are skipped, don't break rendering
+□ Schema validation prevents malformed configs
+PHASE 2 Success Criteria ✅
+□ Identical visual output through Composer pipeline
+□ Z-order policy sorts layers correctly
+□ No performance regression from direct rendering
+□ Composer mount point at correct z-index (60+)
+□ Layer stack renders in proper order
+PHASE 3 Success Criteria ✅
+□ Resize window: smooth scaling, no jumpy transitions
+□ Center position stays within boundary + margin
+□ Scale respects min/max limits from config
+□ Debounce prevents excessive recalculations
+□ Performance: >30 FPS during active resize
+PHASE 4 Success Criteria ✅
+□ Set base/tip coordinates → PNG rotates tip to 90°
+□ Anchors outside image bounds extend to edges correctly
+□ base === tip → no rotation, warning logged once
+□ Pivot point affects rotation center as expected
+□ Toggle anchored/free mode works without glitches
+PERFORMANCE THRESHOLDS
+// Performance targets for each phase
+export const PERFORMANCE_THRESHOLDS = {
+  // FPS Targets
+  BASELINE_FPS: 30,           // Minimum acceptable FPS
+  TARGET_FPS: 45,             // Target FPS for smooth experience
+  MAX_FPS: 60,               // Maximum FPS cap
+  
+  // Memory Limits
+  MAX_MEMORY_MB: 100,        // Maximum memory usage
+  MEMORY_WARNING_MB: 75,     // Warning threshold
+  
+  // Timing Thresholds
+  MAX_FRAME_TIME_MS: 33,     // 30 FPS = 33ms per frame
+  RESIZE_DEBOUNCE_MS: 50,    // Resize debounce delay
+  MAX_DELTA_CLAMP_MS: 100,   // Maximum delta time clamp
+  
+  // Quality Auto-scaling Triggers
+  FPS_DROP_HIGH_TO_MED: 25,  // Drop to medium quality
+  FPS_DROP_MED_TO_LOW: 20,   // Drop to low quality
+  FPS_RECOVERY_THRESHOLD: 35, // Recover quality
+  
+  // Phase-specific Targets
+  PHASE_3_RESIZE_FPS: 30,    // Minimum FPS during resize
+  PHASE_5_MOTION_FPS: 30,    // Minimum FPS during motion
+  PHASE_7_3D_FPS: 25,        // Minimum FPS for 3D effects
+  
+  // Error Rate Limits
+  MAX_ERRORS_PER_SECOND: 5,  // Maximum logged errors
+  LOG_SPAM_PREVENTION_MS: 1000, // Prevent log spam
+} as const;
+ERROR HANDLING TEMPLATES
+// Standard error handling pattern for all logic modules
+export const ERROR_HANDLING_TEMPLATE = `
+try {
+  // Main logic here
+  const result = computeLogic(input);
+  return result;
+  
+} catch (error) {
+  logger.errorOnce(\`Failed for layer \${layer.id}: \${error.message}\`);
+  return fallbackValue;
+}
+`;
+
+// Validation error handling
+export const VALIDATION_TEMPLATE = `
+const validationResult = validateInput(input, defaults);
+if (!validationResult.isValid) {
+  logger.warnOnce(\`Validation failed for \${fieldName}\`, validationResult.errors);
+  return validationResult.value; // Use clamped/default value
+}
+`;
+
+// Async error handling
+export const ASYNC_ERROR_TEMPLATE = `
+try {
+  const result = await asyncOperation();
+  return result;
+} catch (error) {
+  logger.errorOnce(\`Async operation failed: \${error.message}\`);
+  return fallbackValue;
+}
+`;
+IMPORT STATEMENT TEMPLATES
+// Standard imports for Logic modules
+import { createLogger } from "./LauncherScreenLogicUtilsLogging";
+import { clamp, normalizeAngle } from "./LauncherScreenLogicUtilsMath";
+import { Point2D, calculateAngle } from "./LauncherScreenLogicUtilsGeometry";
+import { OriginState, pctToPx } from "./LauncherScreenLogicUtilsUnits";
+import { validateNumber, VALIDATION_RANGES } from "./LauncherScreenLogicUtilsValidation";
+import type { LayerConfig } from "./LauncherScreenConfigSchema";
+
+// React component imports
+import { memo, useEffect, useState, useMemo } from "react";
+import { createLogger } from "./LauncherScreenLogicUtilsLogging";
+
+// Three.js imports (Phase 7+ only)
+import * as THREE from "three";
+import { createLogger } from "./LauncherScreenLogicUtilsLogging";
+BUILD & DEPLOYMENT COMMANDS
+# Development
+npm run dev              # Start dev server
+npm run typecheck        # Type checking only
+npm run lint            # ESLint checking
+npm run lint:fix        # Auto-fix linting issues
+
+# Testing
+npm run test            # Run vitest
+npm run test:run        # Run tests once
+npm run test:coverage   # Run with coverage report
+
+# Production
+npm run build           # Production build
+npm run preview         # Preview production build
+npm run validate        # Full validation pipeline
+
+# Phase-specific validation
+npm run typecheck && npm run lint  # Before each phase
+npm run build                      # After each phase
+Document 7/7 Complete ✅
+
+ALL 7 DOCUMENTS NOW COMPLETE:
+
+✅ Phase-by-Phase Implementation Guide
+✅ LauncherScreen Logic System Overview
+✅ Complete Self-Contained Guide Requirements
+✅ Current Codebase Snapshot
+✅ Utility Functions Library
+✅ Complete Config Specifications
+✅ Code Templates & Testing Guide

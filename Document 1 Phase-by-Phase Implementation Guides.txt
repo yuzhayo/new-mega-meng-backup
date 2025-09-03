@@ -1,0 +1,746 @@
+Document 1 Phase-by-Phase Implementation Guides
+PRE-PHASE: Migration & Bootstrap
+AI Agent Prompt:
+TASK: Extract existing LauncherScreen code into new modular structure. Port origin mapping, BG producer, and gesture system. Maintain exact visual behavior.
+
+MANDATORY:
+- Use OriginProvider (cx, cy, vmin) from old code
+- BG positioning must match old version exactly
+- No fetch JSON; use Config.ts data only
+- Z-order: BG=0..n, Dot=10, Gesture=40, Btn=50
+
+SUCCESS: App renders BG2/BG3 correctly, red dot center, triple-tap works
+Implementation Steps:
+Step 1: Create Origin System
+
+// File: LauncherScreenLogicUtilsOrigin.ts
+// Copy exact logic from old LauncherScreen.tsx OriginProvider
+export type OriginState = { vw: number; vh: number; vmin: number; cx: number; cy: number };
+export function OriginProvider({ children }) { /* port existing */ }
+export function useOrigin() { /* port existing */ }
+export function mapToPx(origin, xPct, yPct) { /* port existing math */ }
+Step 2: Create BG Producer
+
+// File: LauncherScreenLogicBG.tsx
+// Port existing BG component, remove manifest fetch
+export const LauncherScreenLogicBG = memo(function({ layers }) {
+  const origin = useOrigin();
+  // Use mapToPx for positioning, not viewport %
+});
+Step 3: Config Data
+
+// File: LauncherScreenConfig.ts
+export const backgrounds: BgLayer[] = [
+  // Copy exact values from old manifest JSON
+  { id: "BG2", src: "/Asset/BG2.png", xPct: 40, yPct: 50, scalePct: 70 },
+  { id: "BG3", src: "/Asset/BG3.png", xPct: 65, yPct: 50, scalePct: 55 }
+];
+Step 4: Host Rewrite
+
+// File: LauncherScreen.tsx
+import { OriginProvider } from "./LauncherScreenLogicUtilsOrigin";
+export default function LauncherScreen() {
+  return (
+    <OriginProvider>
+      <LauncherScreenLogicBG layers={getBackgrounds()} />
+      <OriginDot /> {/* Use origin.cx, origin.cy */}
+      <GestureLayer onPointerDown={onPointerDown} />
+      {show && <LauncherBtn />}
+    </OriginProvider>
+  );
+}
+Testing: Compare old vs new side-by-side, positions must be identical
+
+PHASE 1: Config System
+AI Agent Prompt:
+TASK: Build TypeScript→JSON config pipeline with validation. Enable hot-reload editing.
+
+MANDATORY:
+- Schema with types/enums for all fields
+- Validator clamps values, handles duplicates
+- Auto-generate JSON from TS changes
+- Hot-reload: pause→validate→commit→resume
+
+SUCCESS: Edit Config.ts → JSON updates → UI changes without restart
+Implementation Steps:
+Step 1: Schema Definition
+
+// File: LauncherScreenConfigSchema.ts
+export interface LayerConfig {
+  id: string;
+  path: string;
+  enabled: boolean;
+  zHint: number;
+  // Add logic2, logic2A, etc fields (empty for now)
+}
+
+export interface AppConfig {
+  schemaVersion: string;
+  backgrounds: BgLayer[];
+  layers: LayerConfig[];
+}
+Step 2: Validator
+
+// File: LauncherScreenConfigValidator.ts
+export function validateConfig(raw: any): AppConfig {
+  // Clamp all % values 0-100
+  // Handle duplicate IDs with suffix .a, .b
+  // Skip invalid paths
+  // Log errors once
+}
+Step 3: Auto-generation
+
+// File: LauncherScreenConfig.ts
+import fs from 'fs';
+
+export const config: AppConfig = { /* dev config */ };
+
+// Auto-generate JSON in build process
+if (process.env.NODE_ENV === 'development') {
+  fs.writeFileSync('./LauncherScreenConfig.json', JSON.stringify(config, null, 2));
+}
+Step 4: Hot-reload Integration
+
+// File: LauncherScreen.tsx
+const [config, setConfig] = useState();
+useEffect(() => {
+  // Watch Config.json changes
+  // Validate → commit → re-render
+}, []);
+Testing: Edit Config.ts, verify JSON updates, UI changes live
+
+PHASE 2: Display Composer
+AI Agent Prompt:
+TASK: Create render pipeline hub. Replace direct BG mounting with Composer shell.
+
+MANDATORY:
+- Composer only orchestrates, doesn't transform
+- Z-order policy separate module
+- Offscreen heuristics dummy (return true)
+- Mount at #composer-root z=60+
+
+SUCCESS: Identical rendering through Composer pipeline
+Implementation Steps:
+Step 1: Composer Shell
+
+// File: LauncherScreenLogicDisplayComposer.ts
+export function LauncherScreenLogicDisplayComposer({ config }) {
+  const layers = useProcessedLayers(config); // Logic 1 output
+  
+  return (
+    <div id="composer-display" className="absolute inset-0">
+      <LauncherScreenLogicBG layers={layers.backgrounds} />
+      <div id="layer-stack">
+        {layers.main.map(layer => (
+          <LayerRenderer key={layer.id} layer={layer} />
+        ))}
+      </div>
+    </div>
+  );
+}
+Step 2: Z-Order Policy
+
+// File: LauncherScreenLogicDisplayZOrderPolicy.ts
+export function sortByZOrder(layers: Layer[]): Layer[] {
+  return layers.sort((a, b) => (a.zHint || 0) - (b.zHint || 0));
+}
+Step 3: Wire in Host
+
+// File: LauncherScreen.tsx
+return (
+  <OriginProvider>
+    <div id="composer-root" className="absolute inset-0 z-60">
+      <LauncherScreenLogicDisplayComposer config={config} />
+    </div>
+    <OriginDot />
+    <GestureLayer />
+  </OriginProvider>
+);
+Testing: Visual output identical, no performance regression
+
+PHASE 3: Logic 2 (PNG Placement)
+AI Agent Prompt:
+TASK: Implement responsive PNG placement with scale/center/margin.
+
+MANDATORY:
+- Scale uses vmin units (uniform aspect ratio)
+- Center % with boundary+margin clamp
+- Debounce resize 50ms, one rounding mode
+- Isolate from rotation logic
+
+SUCCESS: Smooth resize, center stays in bounds, responsive scaling
+Implementation Steps:
+Step 1: Logic 2 Core
+
+// File: LauncherScreenLogic2ImageBasic.ts
+export function applyLogic2(layer: Layer, origin: OriginState): TransformState {
+  const scalePct = clamp(layer.logic2.scalePct, layer.logic2.minScalePct, layer.logic2.maxScalePct);
+  const centerPx = mapToPx(origin, layer.logic2.center.xPct, layer.logic2.center.yPct);
+  
+  // Clamp center to boundary + margin
+  const marginPx = (layer.logic2.marginPct / 100) * origin.vmin;
+  const clampedCenter = clampToBounds(centerPx, origin, marginPx);
+  
+  return {
+    scale: scalePx / 100,
+    x: clampedCenter.x,
+    y: clampedCenter.y,
+    rotation: 0 // Logic 2A handles this
+  };
+}
+Step 2: Add Config Fields
+
+// File: LauncherScreenConfigSchema.ts
+export interface Logic2Config {
+  enabled: boolean;
+  scalePct: number;
+  minScalePct: number;
+  maxScalePct: number;
+  center: { xPct: number; yPct: number };
+  marginPct: number;
+  rounding: 'round' | 'floor' | 'ceil';
+}
+Step 3: Resize Handler
+
+// File: LauncherScreenLogic2ImageBasic.ts
+const [transforms, setTransforms] = useState({});
+
+const debouncedResize = useMemo(() => 
+  debounce(() => {
+    // Recompute all transforms
+    setTransforms(recomputeAll());
+  }, 50), []
+);
+
+useEffect(() => {
+  window.addEventListener('resize', debouncedResize);
+  return () => window.removeEventListener('resize', debouncedResize);
+}, []);
+Step 4: Wire in Pipeline
+
+// File: LauncherScreenLogicDisplayComposer.ts  
+function processLayer(layer: LayerConfig): ProcessedLayer {
+  let transform = { scale: 1, x: 0, y: 0, rotation: 0 };
+  
+  if (layer.logic2?.enabled) {
+    transform = applyLogic2(layer, origin);
+  }
+  
+  return { ...layer, transform };
+}
+Testing: Resize window, verify smooth scaling and boundary clamping
+
+PHASE 4: Logic 2A (Anchored Rotation)
+AI Agent Prompt:
+TASK: Implement base/tip anchor rotation system. Rotate PNG so tip points to 90°.
+
+MANDATORY:
+- Resolve anchors (extend to edge if out-of-bounds)
+- Pivot defaults to base position
+- Calculate angle base→tip, rotate to make tip=90°
+- Don't modify scale/center from Logic 2
+
+SUCCESS: Set base/tip in config → PNG rotates correctly, handles edge cases
+Implementation Steps:
+Step 1: Anchor Resolution
+
+// File: LauncherScreenLogic2AAnchoredRotate.ts
+function resolveAnchor(anchorPct: {x: number, y: number}, imageDim: {w: number, h: number}): {x: number, y: number} {
+  // If anchor outside bounds, extend line to edge
+  if (Math.abs(anchorPct.x) > 50 || Math.abs(anchorPct.y) > 50) {
+    return extendToEdge(anchorPct, imageDim);
+  }
+  return anchorPct;
+}
+
+function extendToEdge(point: {x: number, y: number}, bounds: {w: number, h: number}): {x: number, y: number} {
+  // Ray from origin to point, find intersection with rectangle
+  const ray = normalize(point);
+  return intersectRayRect(ray, bounds);
+}
+Step 2: Rotation Calculation
+
+export function applyLogic2A(layer: Layer, currentTransform: TransformState): TransformState {
+  if (!layer.logic2A?.enabled || layer.logic2A.rotationMode !== 'anchored') {
+    return currentTransform;
+  }
+  
+  const resolvedBase = resolveAnchor(layer.logic2A.base, layer.imageDim);
+  const resolvedTip = resolveAnchor(layer.logic2A.tip, layer.imageDim);
+  
+  if (pointsEqual(resolvedBase, resolvedTip)) {
+    console.warn(`[Logic2A] Base==Tip for layer ${layer.id}, skipping rotation`);
+    return currentTransform;
+  }
+  
+  const currentAngle = calculateAngle(resolvedBase, resolvedTip);
+  const targetAngle = 90; // degrees
+  const deltaAngle = normalizeAngle(targetAngle - currentAngle);
+  
+  const pivot = layer.logic2A.pivot === 'base' ? resolvedBase : { x: 0, y: 0 };
+  
+  return {
+    ...currentTransform,
+    rotation: currentTransform.rotation + deltaAngle,
+    pivot: pivot
+  };
+}
+Step 3: Add Config Fields
+
+// File: LauncherScreenConfigSchema.ts
+export interface Logic2AConfig {
+  enabled: boolean;
+  rotationMode: 'anchored' | 'free';
+  base: { xPct: number; yPct: number };
+  tip: { xPct: number; yPct: number };
+  pivot: 'base' | 'center';
+}
+Step 4: Wire After Logic 2
+
+// File: LauncherScreenLogicDisplayComposer.ts
+function processLayer(layer: LayerConfig): ProcessedLayer {
+  let transform = applyLogic2(layer, origin);
+  
+  if (layer.logic2A?.enabled) {
+    transform = applyLogic2A(layer, transform);
+  }
+  
+  return { ...layer, transform };
+}
+Testing: Set various base/tip positions, verify tip always points to 90°
+
+PHASE 5: Logic 3 + 3A (Motion Systems)
+AI Agent Prompt:
+TASK: Implement continuous rotation (Spin) and orbital motion (Orbit). Share time driver.
+
+MANDATORY:
+- Spin: continuous rotation around pivot
+- Orbit: circular translation around orbit point  
+- FPS throttle (maxFps), Δt clamp (100ms)
+- Clock can override speed/direction when enabled
+
+SUCCESS: Smooth continuous motion, FPS throttling works, no jitter
+Implementation Steps:
+Step 1: Time Driver
+
+// File: LauncherScreenLogicDriverTime.ts
+export class TimeDriver {
+  private lastTime = 0;
+  private accumulatedTime = 0;
+  private targetFps = 45;
+  
+  tick(callback: (deltaMs: number) => void, maxFps = 45) {
+    const now = performance.now();
+    const deltaMs = Math.min(now - this.lastTime, 100); // Clamp Δt
+    this.lastTime = now;
+    
+    this.accumulatedTime += deltaMs;
+    const frameInterval = 1000 / maxFps;
+    
+    if (this.accumulatedTime >= frameInterval) {
+      callback(this.accumulatedTime);
+      this.accumulatedTime = 0;
+    }
+    
+    requestAnimationFrame(() => this.tick(callback, maxFps));
+  }
+}
+Step 2: Spin Logic
+
+// File: LauncherScreenLogic3Spin.ts
+export function applyLogic3Spin(layer: Layer, currentTransform: TransformState, deltaMs: number): TransformState {
+  if (!layer.logic3?.enabled) return currentTransform;
+  
+  const rpm = layer.logic3.fullSpinPerMinute;
+  const direction = layer.logic3.direction === 'ccw' ? -1 : 1;
+  const degreesPerMs = (rpm * 360) / (60 * 1000);
+  
+  const spinDelta = degreesPerMs * deltaMs * direction;
+  const newRotation = (currentTransform.rotation + spinDelta) % 360;
+  
+  return {
+    ...currentTransform,
+    rotation: newRotation
+  };
+}
+Step 3: Orbit Logic
+
+// File: LauncherScreenLogic3AOrbit.ts
+export function applyLogic3AOrbit(layer: Layer, currentTransform: TransformState, deltaMs: number): TransformState {
+  if (!layer.logic3A?.enabled) return currentTransform;
+  
+  const rpm = layer.logic3A.fullOrbitPerMinute;
+  const direction = layer.logic3A.direction === 'ccw' ? -1 : 1;
+  const radiusPx = (layer.logic3A.radiusPct / 100) * origin.vmin;
+  
+  const degreesPerMs = (rpm * 360) / (60 * 1000);
+  const orbitDelta = degreesPerMs * deltaMs * direction;
+  
+  // Update orbit angle
+  layer._orbitAngle = (layer._orbitAngle || 0) + orbitDelta;
+  
+  // Calculate orbital offset
+  const orbitX = Math.cos(layer._orbitAngle * Math.PI / 180) * radiusPx;
+  const orbitY = Math.sin(layer._orbitAngle * Math.PI / 180) * radiusPx;
+  
+  return {
+    ...currentTransform,
+    x: currentTransform.x + orbitX,
+    y: currentTransform.y + orbitY
+  };
+}
+Step 4: Motion Pipeline
+
+// File: LauncherScreenLogicDisplayComposer.ts
+const timeDriver = new TimeDriver();
+
+useEffect(() => {
+  timeDriver.tick((deltaMs) => {
+    setLayers(layers => layers.map(layer => {
+      let transform = layer.transform;
+      
+      // Apply motion systems
+      if (layer.logic3?.enabled) {
+        transform = applyLogic3Spin(layer, transform, deltaMs);
+      }
+      
+      if (layer.logic3A?.enabled) {
+        transform = applyLogic3AOrbit(layer, transform, deltaMs);
+      }
+      
+      return { ...layer, transform };
+    }));
+  });
+}, []);
+Testing: Enable spin/orbit, verify smooth motion and FPS throttling
+
+PHASE 6: Clock System
+AI Agent Prompt:
+TASK: Implement real-time clock driver that overrides Spin/Orbit motion.
+
+MANDATORY:
+- Mode A: 12h×2/day, Mode B: 24h=1 rotation
+- Roles: second/minute/hour hands
+- Clock priority: overrides Spin/Orbit speed/direction
+- Sync: device time (server optional)
+
+SUCCESS: Clock hands move accurately, override motion when enabled
+Implementation Steps:
+Step 1: Clock Driver
+
+// File: LauncherScreenLogicClockDriver.ts
+export class ClockDriver {
+  getCurrentAngle(mode: 'modeA' | 'modeB', role: 'second' | 'minute' | 'hour'): number {
+    const now = new Date();
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
+    const seconds = now.getSeconds();
+    
+    if (mode === 'modeA') {
+      // 12h clock: 0°=12, 90°=3, 180°=6, 270°=9
+      switch (role) {
+        case 'second': return (seconds * 6) - 90; // 6°/sec, -90° offset for 12 o'clock = 0°
+        case 'minute': return (minutes * 6) - 90; // 6°/min
+        case 'hour': return ((hours % 12) * 30 + minutes * 0.5) - 90; // 30°/hour + smooth
+      }
+    } else {
+      // 24h clock: 0°=midnight, 180°=noon
+      switch (role) {
+        case 'second': return (seconds * 6) - 90;
+        case 'minute': return (minutes * 6) - 90;
+        case 'hour': return (hours * 15 + minutes * 0.25) - 90; // 15°/hour
+      }
+    }
+  }
+}
+Step 2: Clock Override Logic
+
+export function applyClockOverride(layer: Layer, currentTransform: TransformState): TransformState {
+  if (!layer.clock?.enabled) return currentTransform;
+  
+  const clockDriver = new ClockDriver();
+  const targetAngle = clockDriver.getCurrentAngle(layer.clock.mode, layer.clock.role);
+  
+  // Override rotation directly, preserving other transforms
+  return {
+    ...currentTransform,
+    rotation: targetAngle + (layer.clock.offsetDeg || 0)
+  };
+}
+Step 3: Priority System
+
+// File: LauncherScreenLogicDisplayComposer.ts
+function processLayer(layer: LayerConfig, deltaMs: number): ProcessedLayer {
+  let transform = applyLogic2(layer, origin);
+  
+  if (layer.logic2A?.enabled) {
+    transform = applyLogic2A(layer, transform);
+  }
+  
+  // Apply motion (will be overridden by clock if enabled)
+  if (layer.logic3?.enabled && !layer.clock?.enabled) {
+    transform = applyLogic3Spin(layer, transform, deltaMs);
+  }
+  
+  if (layer.logic3A?.enabled && !layer.clock?.enabled) {
+    transform = applyLogic3AOrbit(layer, transform, deltaMs);
+  }
+  
+  // Clock has highest priority
+  if (layer.clock?.enabled) {
+    transform = applyClockOverride(layer, transform);
+  }
+  
+  return { ...layer, transform };
+}
+Testing: Enable clock, verify hands move correctly and override motion
+
+PHASE 7: Effects Pipeline
+AI Agent Prompt:
+TASK: Implement visual effects system with 3D fallback.
+
+MANDATORY:
+- Basic effects: opacity, blur, brightness, etc.
+- 3D effects: Three.js with quality auto-scaling
+- Effects apply after transform pipeline
+- Graceful 3D→2D fallback on WebGL failure
+
+SUCCESS: Effects work correctly, 3D fallback is seamless
+Implementation Steps:
+Step 1: Basic Effects
+
+// File: LauncherScreenLogicEffectBasic.ts
+export function applyBasicEffects(layer: Layer): CSSProperties {
+  if (!layer.effect?.enabled) return {};
+  
+  const e = layer.effect;
+  
+  return {
+    opacity: clamp(e.opacityPct || 100, 0, 100) / 100,
+    filter: [
+      e.blurPx > 0 ? `blur(${e.blurPx}px)` : '',
+      e.brightnessPct !== 100 ? `brightness(${e.brightnessPct}%)` : '',
+      e.contrastPct !== 100 ? `contrast(${e.contrastPct}%)` : '',
+      e.saturatePct !== 100 ? `saturate(${e.saturatePct}%)` : '',
+      e.grayscalePct > 0 ? `grayscale(${e.grayscalePct}%)` : '',
+      e.hueRotateDeg !== 0 ? `hue-rotate(${e.hueRotateDeg}deg)` : ''
+    ].filter(Boolean).join(' '),
+    mixBlendMode: e.blend || 'normal',
+    visibility: e.visibility || 'visible'
+  };
+}
+Step 2: 3D Effects System
+
+// File: LauncherScreenLogicEffect3DRenderer.ts
+export class Effect3DRenderer {
+  private renderer: THREE.WebGLRenderer | null = null;
+  private scene: THREE.Scene;
+  private camera: THREE.Camera;
+  private fallbackMode = false;
+  
+  init(canvas: HTMLCanvasElement): boolean {
+    try {
+      this.renderer = new THREE.WebGLRenderer({ canvas, alpha: true });
+      this.scene = new THREE.Scene();
+      this.camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
+      return true;
+    } catch (error) {
+      console.warn('[Effect3D] WebGL not supported, falling back to 2D');
+      this.fallbackMode = true;
+      return false;
+    }
+  }
+  
+  render(layers: ProcessedLayer[]) {
+    if (this.fallbackMode) return;
+    
+    try {
+      // Create/update meshes for each layer
+      layers.forEach(layer => {
+        if (layer.effect3d?.enabled) {
+          this.updateLayerMesh(layer);
+        }
+      });
+      
+      this.renderer?.render(this.scene, this.camera);
+    } catch (error) {
+      console.warn('[Effect3D] Render failed, falling back to 2D');
+      this.fallbackMode = true;
+    }
+  }
+}
+Step 3: Quality Auto-scaling
+
+// File: LauncherScreenLogicEffect3DComposer.ts
+export class QualityManager {
+  private fpsHistory: number[] = [];
+  private currentQuality: 'high' | 'med' | 'low' = 'high';
+  
+  updateQuality(fps: number) {
+    this.fpsHistory.push(fps);
+    if (this.fpsHistory.length > 60) this.fpsHistory.shift();
+    
+    const avgFps = this.fpsHistory.reduce((a, b) => a + b) / this.fpsHistory.length;
+    
+    if (avgFps < 25 && this.currentQuality === 'high') {
+      this.currentQuality = 'med';
+      this.applyQualitySettings();
+    } else if (avgFps < 20 && this.currentQuality === 'med') {
+      this.currentQuality = 'low';
+      this.applyQualitySettings();
+    }
+  }
+  
+  private applyQualitySettings() {
+    switch (this.currentQuality) {
+      case 'low':
+        // Disable heavy shaders, reduce particles
+        break;
+      case 'med':
+        // Reduce shader complexity
+        break;
+    }
+  }
+}
+Step 4: Wire Effects Pipeline
+
+// File: LauncherScreenLogicDisplayComposer.ts
+function LayerRenderer({ layer }: { layer: ProcessedLayer }) {
+  const basicEffects = applyBasicEffects(layer);
+  
+  if (layer.effect3d?.enabled && !effect3DRenderer.fallbackMode) {
+    return <Canvas3DLayer layer={layer} />;
+  }
+  
+  return (
+    <img
+      src={layer.path}
+      style={{
+        ...getTransformStyle(layer.transform),
+        ...basicEffects
+      }}
+    />
+  );
+}
+Testing: Apply effects, test 3D→2D fallback by disabling WebGL
+
+PHASE 8: Diagnostics & Polish
+AI Agent Prompt:
+TASK: Add debug tools, performance monitoring, and final polish.
+
+MANDATORY:
+- Debug overlay with FPS, memory, logic inspector
+- Error boundaries with graceful degradation
+- Performance monitoring and alerts
+- State management with snapshots
+
+SUCCESS: Production-ready app with comprehensive dev tools
+Implementation Steps:
+Step 1: Debug Overlay
+
+// File: LauncherScreenLogicDiagnosticsDebugOverlay.tsx
+export function DebugOverlay() {
+  const [fps, setFps] = useState(0);
+  const [memory, setMemory] = useState(0);
+  const layers = useComposerState();
+  
+  return (
+    <div className="fixed top-0 left-0 z-[9999] bg-black/80 text-white p-2 text-xs">
+      <div>FPS: {fps.toFixed(1)}</div>
+      <div>Memory: {(memory / 1024 / 1024).toFixed(1)}MB</div>
+      <div>Layers: {layers.length}</div>
+      <div>Pipeline: L1→L2→2A→3→3A→Clock→Effect</div>
+    </div>
+  );
+}
+Step 2: Logic Inspector
+
+// File: LauncherScreenLogicDiagnosticsInspectPanel.tsx
+export function LogicInspector({ layer }: { layer: ProcessedLayer }) {
+  return (
+    <div className="logic-inspector">
+      <h3>Layer: {layer.id}</h3>
+      <div>Logic 2: {layer.logic2?.enabled ? '✓' : '✗'}</div>
+      <div>Logic 2A: {layer.logic2A?.enabled ? '✓' : '✗'}</div>
+      <div>Logic 3: {layer.logic3?.enabled ? '✓' : '✗'}</div>
+      <div>Transform: {JSON.stringify(layer.transform, null, 2)}</div>
+    </div>
+  );
+}
+Step 3: Error Boundaries
+
+// File: LauncherScreen.tsx
+class LauncherErrorBoundary extends React.Component {
+  state = { hasError: false, lastSnapshot: null };
+  
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true };
+  }
+  
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('[LauncherScreen] Critical error:', error);
+    // Restore from snapshot or use safe defaults
+  }
+  
+  render() {
+    if (this.state.hasError) {
+      return <SafeModeRenderer />;
+    }
+    return this.props.children;
+  }
+}
+Step 4: Performance Monitoring
+
+// File: LauncherScreenLogicDiagnosticsPerformance.ts
+export class PerformanceMonitor {
+  private fpsCounter = new FPSCounter();
+  private memoryTracker = new MemoryTracker();
+  
+  tick() {
+    const fps = this.fpsCounter.update();
+    const memory = this.memoryTracker.getUsage();
+    
+    if (fps < 20) {
+      console.warn('[Performance] Low FPS detected:', fps);
+      this.triggerQualityReduction();
+    }
+    
+    if (memory > 100 * 1024 * 1024) { // 100MB
+      console.warn('[Performance] High memory usage:', memory);
+      this.triggerMemoryCleanup();
+    }
+  }
+}
+Step 5: Final Integration
+
+// File: LauncherScreen.tsx
+export default function LauncherScreen() {
+  const isDev = process.env.NODE_ENV === 'development';
+  
+  return (
+    <LauncherErrorBoundary>
+      <OriginProvider>
+        <div id="launcher-root" className="relative w-screen h-screen overflow-hidden bg-black">
+          <div id="composer-root" className="absolute inset-0 z-60">
+            <LauncherScreenLogicDisplayComposer />
+          </div>
+          
+          <OriginDot />
+          <GestureLayer onPointerDown={onPointerDown} />
+          
+          {show && <LauncherBtn />}
+          {show && isDev && <DebugOverlay />}
+        </div>
+      </OriginProvider>
+    </LauncherErrorBoundary>
+  );
+}
+Testing: Enable all debug tools, test error scenarios, verify performance monitoring
+
+Final Success Criteria:
+
+All phases working together seamlessly
+Debug tools provide useful information
+Performance is stable across devices
+Error handling prevents crashes
+Code is maintainable and well-documented

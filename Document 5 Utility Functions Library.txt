@@ -1,0 +1,685 @@
+Document 5: Utility Functions Library
+MATH UTILITIES
+// File: LauncherScreenLogicUtilsMath.ts
+// Basic math operations used across all logic modules
+
+/**
+ * Clamp value between min and max (inclusive)
+ */
+export const clamp = (value: number, min: number, max: number): number => {
+  return Math.max(min, Math.min(max, value));
+};
+
+/**
+ * Normalize angle to 0-360 range
+ */
+export const normalizeAngle = (degrees: number): number => {
+  return ((degrees % 360) + 360) % 360;
+};
+
+/**
+ * Convert degrees to radians
+ */
+export const degToRad = (degrees: number): number => {
+  return degrees * (Math.PI / 180);
+};
+
+/**
+ * Convert radians to degrees
+ */
+export const radToDeg = (radians: number): number => {
+  return radians * (180 / Math.PI);
+};
+
+/**
+ * Linear interpolation between two values
+ */
+export const lerp = (a: number, b: number, t: number): number => {
+  return a + (b - a) * clamp(t, 0, 1);
+};
+
+/**
+ * Check if two numbers are approximately equal (within epsilon)
+ */
+export const approximately = (a: number, b: number, epsilon = 0.001): boolean => {
+  return Math.abs(a - b) < epsilon;
+};
+
+/**
+ * Wrap value to range [0, max)
+ */
+export const wrap = (value: number, max: number): number => {
+  return ((value % max) + max) % max;
+};
+GEOMETRY UTILITIES
+// File: LauncherScreenLogicUtilsGeometry.ts
+// Vector math and geometric calculations
+
+export interface Point2D {
+  x: number;
+  y: number;
+}
+
+export interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Calculate distance between two points
+ */
+export const distance = (a: Point2D, b: Point2D): number => {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return Math.hypot(dx, dy);
+};
+
+/**
+ * Calculate angle from point A to point B (in degrees)
+ * Returns 0-360, where 0° = right, 90° = up, 180° = left, 270° = down
+ */
+export const calculateAngle = (from: Point2D, to: Point2D): number => {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const radians = Math.atan2(-dy, dx); // -dy because screen Y is inverted
+  return normalizeAngle(radToDeg(radians));
+};
+
+/**
+ * Normalize vector to unit length
+ */
+export const normalizeVector = (point: Point2D): Point2D => {
+  const length = Math.hypot(point.x, point.y);
+  if (length === 0) return { x: 0, y: 0 };
+  return { x: point.x / length, y: point.y / length };
+};
+
+/**
+ * Extend ray from origin through point until it intersects rectangle bounds
+ * Used for Logic 2A anchor resolution when anchors are outside image bounds
+ */
+export const intersectRayRect = (origin: Point2D, direction: Point2D, rect: Rect): Point2D => {
+  const normalized = normalizeVector(direction);
+  if (normalized.x === 0 && normalized.y === 0) return origin;
+
+  const halfW = rect.width / 2;
+  const halfH = rect.height / 2;
+  const centerX = rect.x + halfW;
+  const centerY = rect.y + halfH;
+
+  // Calculate parametric t values for each edge
+  const tRight = normalized.x > 0 ? (centerX + halfW - origin.x) / normalized.x : Infinity;
+  const tLeft = normalized.x < 0 ? (centerX - halfW - origin.x) / normalized.x : Infinity;
+  const tTop = normalized.y < 0 ? (centerY - halfH - origin.y) / normalized.y : Infinity;
+  const tBottom = normalized.y > 0 ? (centerY + halfH - origin.y) / normalized.y : Infinity;
+
+  // Find smallest positive t
+  const t = Math.min(...[tRight, tLeft, tTop, tBottom].filter(val => val > 0 && val < Infinity));
+  
+  if (t === Infinity) return origin; // No intersection
+
+  return {
+    x: origin.x + normalized.x * t,
+    y: origin.y + normalized.y * t
+  };
+};
+
+/**
+ * Check if two points are equal within epsilon tolerance
+ */
+export const pointsEqual = (a: Point2D, b: Point2D, epsilon = 0.001): boolean => {
+  return approximately(a.x, b.x, epsilon) && approximately(a.y, b.y, epsilon);
+};
+
+/**
+ * Rotate point around pivot by degrees
+ */
+export const rotatePoint = (point: Point2D, pivot: Point2D, degrees: number): Point2D => {
+  const radians = degToRad(degrees);
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+
+  const dx = point.x - pivot.x;
+  const dy = point.y - pivot.y;
+
+  return {
+    x: pivot.x + dx * cos - dy * sin,
+    y: pivot.y + dx * sin + dy * cos
+  };
+};
+UNITS & COORDINATE UTILITIES
+// File: LauncherScreenLogicUtilsUnits.ts
+// Unit conversions and coordinate transformations
+
+export interface OriginState {
+  width: number;
+  height: number;
+  centerX: number;
+  centerY: number;
+  scale: number; // vmin scale factor
+}
+
+export interface Norm {
+  x: number;
+  y: number;
+}
+
+/**
+ * Convert normalized coordinates (-1 to +1) to pixel coordinates
+ * Port from existing LauncherScreen.tsx
+ */
+export const mapToPx = (origin: OriginState, norm: Norm): { left: number; top: number } => {
+  const left = origin.centerX + norm.x * origin.scale;
+  const top = origin.centerY - norm.y * origin.scale; // -y because screen Y is inverted
+  return { left, top };
+};
+
+/**
+ * Convert pixel coordinates to normalized coordinates (-1 to +1)
+ * Port from existing LauncherScreen.tsx
+ */
+export const pxToNorm = (origin: OriginState, px: { left: number; top: number }): Norm => {
+  const x = (px.left - origin.centerX) / origin.scale;
+  const y = (origin.centerY - px.top) / origin.scale; // -y because screen Y is inverted
+  return { x, y };
+};
+
+/**
+ * Convert percentage (0-100) to normalized coordinate (-1 to +1)
+ */
+export const pctToNorm = (pct: number): number => {
+  return (clamp(pct, 0, 100) - 50) / 50;
+};
+
+/**
+ * Convert normalized coordinate (-1 to +1) to percentage (0-100)
+ */
+export const normToPct = (norm: number): number => {
+  return clamp(norm * 50 + 50, 0, 100);
+};
+
+/**
+ * Convert percentage coordinates to pixel coordinates via origin
+ */
+export const pctToPx = (origin: OriginState, xPct: number, yPct: number): { left: number; top: number } => {
+  const norm: Norm = {
+    x: pctToNorm(xPct),
+    y: pctToNorm(yPct)
+  };
+  return mapToPx(origin, norm);
+};
+
+/**
+ * Calculate vmin value (minimum of viewport width/height)
+ */
+export const getVmin = (width: number, height: number): number => {
+  return Math.min(width, height);
+};
+
+/**
+ * Convert vmin percentage to pixels
+ */
+export const vminToPx = (vminPct: number, viewportWidth: number, viewportHeight: number): number => {
+  const vmin = getVmin(viewportWidth, viewportHeight);
+  return (vminPct / 100) * vmin;
+};
+
+/**
+ * Clamp center position to stay within bounds + margin
+ */
+export const clampToBounds = (
+  center: { left: number; top: number }, 
+  origin: OriginState, 
+  marginPx: number
+): { left: number; top: number } => {
+  return {
+    left: clamp(center.left, marginPx, origin.width - marginPx),
+    top: clamp(center.top, marginPx, origin.height - marginPx)
+  };
+};
+PERFORMANCE UTILITIES
+// File: LauncherScreenLogicUtilsPerformance.ts
+// Debouncing, FPS monitoring, and performance optimization
+
+/**
+ * Debounce function to limit rapid successive calls
+ */
+export const debounce = <T extends (...args: any[]) => any>(
+  func: T,
+  delayMs: number
+): ((...args: Parameters<T>) => void) => {
+  let timeoutId: number | null = null;
+  
+  return (...args: Parameters<T>) => {
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId);
+    }
+    
+    timeoutId = window.setTimeout(() => {
+      func(...args);
+      timeoutId = null;
+    }, delayMs);
+  };
+};
+
+/**
+ * Throttle function to limit calls to once per interval
+ */
+export const throttle = <T extends (...args: any[]) => any>(
+  func: T,
+  intervalMs: number
+): ((...args: Parameters<T>) => void) => {
+  let lastCall = 0;
+  
+  return (...args: Parameters<T>) => {
+    const now = performance.now();
+    if (now - lastCall >= intervalMs) {
+      lastCall = now;
+      func(...args);
+    }
+  };
+};
+
+/**
+ * FPS Counter for performance monitoring
+ */
+export class FPSCounter {
+  private frames: number[] = [];
+  private lastTime = performance.now();
+
+  update(): number {
+    const now = performance.now();
+    const delta = now - this.lastTime;
+    this.lastTime = now;
+
+    // Add current frame time
+    this.frames.push(delta);
+    
+    // Keep only last 60 frames (1 second at 60fps)
+    if (this.frames.length > 60) {
+      this.frames.shift();
+    }
+
+    // Calculate average FPS
+    const avgDelta = this.frames.reduce((a, b) => a + b, 0) / this.frames.length;
+    return avgDelta > 0 ? 1000 / avgDelta : 0;
+  }
+
+  reset(): void {
+    this.frames = [];
+    this.lastTime = performance.now();
+  }
+}
+
+/**
+ * Memory usage tracker
+ */
+export class MemoryTracker {
+  getUsage(): number {
+    if ('memory' in performance) {
+      return (performance as any).memory.usedJSHeapSize;
+    }
+    return 0;
+  }
+
+  getUsageMB(): number {
+    return this.getUsage() / (1024 * 1024);
+  }
+}
+
+/**
+ * Time delta clamp for consistent animation
+ */
+export const clampDelta = (deltaMs: number, maxDelta = 100): number => {
+  return clamp(deltaMs, 0, maxDelta);
+};
+
+/**
+ * Frame rate limiter
+ */
+export class FrameRateLimiter {
+  private lastFrameTime = 0;
+  private targetInterval: number;
+
+  constructor(targetFps: number) {
+    this.targetInterval = 1000 / clamp(targetFps, 15, 60);
+  }
+
+  shouldRender(): boolean {
+    const now = performance.now();
+    if (now - this.lastFrameTime >= this.targetInterval) {
+      this.lastFrameTime = now;
+      return true;
+    }
+    return false;
+  }
+
+  setTargetFps(fps: number): void {
+    this.targetInterval = 1000 / clamp(fps, 15, 60);
+  }
+}
+LOGGING UTILITIES
+// File: LauncherScreenLogicUtilsLogging.ts
+// Consistent logging across all logic modules
+
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+export interface LogEntry {
+  timestamp: number;
+  level: LogLevel;
+  module: string;
+  message: string;
+  data?: any;
+}
+
+/**
+ * Logger with module-specific prefixes and rate limiting
+ */
+export class Logger {
+  private loggedMessages = new Set<string>();
+  private logHistory: LogEntry[] = [];
+  private maxHistorySize = 100;
+
+  constructor(private module: string) {}
+
+  private log(level: LogLevel, message: string, data?: any): void {
+    const entry: LogEntry = {
+      timestamp: performance.now(),
+      level,
+      module: this.module,
+      message,
+      data
+    };
+
+    // Add to history
+    this.logHistory.push(entry);
+    if (this.logHistory.length > this.maxHistorySize) {
+      this.logHistory.shift();
+    }
+
+    // Console output
+    const prefix = `[${this.module}]`;
+    const methods = {
+      debug: console.debug,
+      info: console.info,
+      warn: console.warn,
+      error: console.error
+    };
+
+    if (data !== undefined) {
+      methods[level](prefix, message, data);
+    } else {
+      methods[level](prefix, message);
+    }
+  }
+
+  debug(message: string, data?: any): void {
+    this.log('debug', message, data);
+  }
+
+  info(message: string, data?: any): void {
+    this.log('info', message, data);
+  }
+
+  warn(message: string, data?: any): void {
+    this.log('warn', message, data);
+  }
+
+  error(message: string, data?: any): void {
+    this.log('error', message, data);
+  }
+
+  /**
+   * Log once - prevents spam of repeated messages
+   */
+  warnOnce(message: string, data?: any): void {
+    const key = `${this.module}:${message}`;
+    if (!this.loggedMessages.has(key)) {
+      this.loggedMessages.add(key);
+      this.warn(message, data);
+    }
+  }
+
+  errorOnce(message: string, data?: any): void {
+    const key = `${this.module}:${message}`;
+    if (!this.loggedMessages.has(key)) {
+      this.loggedMessages.add(key);
+      this.error(message, data);
+    }
+  }
+
+  getHistory(): LogEntry[] {
+    return [...this.logHistory];
+  }
+
+  clearHistory(): void {
+    this.logHistory = [];
+  }
+
+  clearOnceCache(): void {
+    this.loggedMessages.clear();
+  }
+}
+
+/**
+ * Create logger instance for a module
+ */
+export const createLogger = (module: string): Logger => {
+  return new Logger(module);
+};
+
+// Pre-created loggers for each logic module
+export const loggers = {
+  Logic1: createLogger('Logic1'),
+  Logic2: createLogger('Logic2'),
+  Logic2A: createLogger('Logic2A'),
+  Logic3: createLogger('Logic3'),
+  Logic3A: createLogger('Logic3A'),
+  Clock: createLogger('Clock'),
+  Effect: createLogger('Effect'),
+  Effect3D: createLogger('Effect3D'),
+  Composer: createLogger('Composer'),
+  Config: createLogger('Config')
+};
+VALIDATION UTILITIES
+// File: LauncherScreenLogicUtilsValidation.ts
+// Input validation and sanitization
+
+export interface ValidationResult<T> {
+  isValid: boolean;
+  value: T;
+  errors: string[];
+}
+
+/**
+ * Validate and clamp numeric value to range
+ */
+export const validateNumber = (
+  value: any, 
+  min: number, 
+  max: number, 
+  defaultValue: number,
+  fieldName = 'value'
+): ValidationResult<number> => {
+  const errors: string[] = [];
+  
+  if (typeof value !== 'number' || isNaN(value)) {
+    errors.push(`${fieldName} must be a valid number`);
+    return { isValid: false, value: defaultValue, errors };
+  }
+
+  const clamped = clamp(value, min, max);
+  if (clamped !== value) {
+    errors.push(`${fieldName} clamped from ${value} to ${clamped} (range: ${min}-${max})`);
+  }
+
+  return { 
+    isValid: errors.length === 0, 
+    value: clamped, 
+    errors 
+  };
+};
+
+/**
+ * Validate string against allowed values
+ */
+export const validateEnum = <T extends string>(
+  value: any,
+  allowedValues: readonly T[],
+  defaultValue: T,
+  fieldName = 'value'
+): ValidationResult<T> => {
+  const errors: string[] = [];
+
+  if (typeof value !== 'string' || !allowedValues.includes(value as T)) {
+    errors.push(`${fieldName} must be one of: ${allowedValues.join(', ')}`);
+    return { isValid: false, value: defaultValue, errors };
+  }
+
+  return { isValid: true, value: value as T, errors };
+};
+
+/**
+ * Validate boolean value
+ */
+export const validateBoolean = (
+  value: any,
+  defaultValue: boolean,
+  fieldName = 'value'
+): ValidationResult<boolean> => {
+  const errors: string[] = [];
+
+  if (typeof value !== 'boolean') {
+    errors.push(`${fieldName} must be a boolean`);
+    return { isValid: false, value: defaultValue, errors };
+  }
+
+  return { isValid: true, value, errors };
+};
+
+/**
+ * Validate Point2D coordinates
+ */
+export const validatePoint2D = (
+  value: any,
+  defaultValue: Point2D,
+  fieldName = 'point'
+): ValidationResult<Point2D> => {
+  const errors: string[] = [];
+
+  if (!value || typeof value !== 'object') {
+    errors.push(`${fieldName} must be an object with x and y properties`);
+    return { isValid: false, value: defaultValue, errors };
+  }
+
+  const xResult = validateNumber(value.x, -200, 200, defaultValue.x, `${fieldName}.x`);
+  const yResult = validateNumber(value.y, -200, 200, defaultValue.y, `${fieldName}.y`);
+
+  errors.push(...xResult.errors, ...yResult.errors);
+
+  return {
+    isValid: xResult.isValid && yResult.isValid,
+    value: { x: xResult.value, y: yResult.value },
+    errors
+  };
+};
+
+/**
+ * Standard validation ranges used across the system
+ */
+export const VALIDATION_RANGES = {
+  percentage: { min: 0, max: 100 },
+  extendedPercentage: { min: -200, max: 200 },
+  scalePct: { min: 1, max: 400 },
+  degrees: { min: 0, max: 360 },
+  offsetDegrees: { min: -180, max: 180 },
+  fps: { min: 15, max: 60 },
+  rpm: { min: 0, max: 120 },
+  orbitRpm: { min: 0, max: 60 },
+  blur: { min: 0, max: 20 },
+  brightness: { min: 0, max: 200 },
+  zHint: { min: 0, max: 100 },
+  bgZ: { min: 0, max: 10 }
+} as const;
+ERROR HANDLING UTILITIES
+// File: LauncherScreenLogicUtilsError.ts
+// Standardized error handling and recovery
+
+export class LauncherError extends Error {
+  constructor(
+    message: string,
+    public module: string,
+    public layerId?: string,
+    public recoverable = true
+  ) {
+    super(message);
+    this.name = 'LauncherError';
+  }
+}
+
+/**
+ * Safe execution wrapper with fallback
+ */
+export const safeExecute = <T>(
+  operation: () => T,
+  fallback: T,
+  logger: Logger,
+  context = 'operation'
+): T => {
+  try {
+    return operation();
+  } catch (error) {
+    logger.errorOnce(`${context} failed: ${error instanceof Error ? error.message : String(error)}`);
+    return fallback;
+  }
+};
+
+/**
+ * Async safe execution wrapper
+ */
+export const safeExecuteAsync = async <T>(
+  operation: () => Promise<T>,
+  fallback: T,
+  logger: Logger,
+  context = 'async operation'
+): Promise<T> => {
+  try {
+    return await operation();
+  } catch (error) {
+    logger.errorOnce(`${context} failed: ${error instanceof Error ? error.message : String(error)}`);
+    return fallback;
+  }
+};
+
+/**
+ * Create error boundary for specific operations
+ */
+export const createErrorBoundary = (module: string, logger: Logger) => {
+  return <T>(operation: () => T, fallback: T, layerId?: string): T => {
+    try {
+      return operation();
+    } catch (error) {
+      const launcherError = new LauncherError(
+        error instanceof Error ? error.message : String(error),
+        module,
+        layerId
+      );
+      logger.errorOnce(`Error in ${module}${layerId ? ` for layer ${layerId}` : ''}: ${launcherError.message}`);
+      return fallback;
+    }
+  };
+};
+Document 5/7 Complete ✅
+
+This utility library provides:
+
+✅ All math functions needed (clamp, normalizeAngle, calculateAngle, etc.)
+✅ Geometry utilities (intersectRayRect for Logic 2A anchor resolution)
+✅ Coordinate transformations (ported from existing LauncherScreen.tsx)
+✅ Performance monitoring (FPSCounter, debounce, throttle)
+✅ Consistent logging across all modules
+✅ Input validation with proper error handling
+✅ Error boundaries and safe execution wrappers
+Next AI agent now has complete utility functions to implement all logic phases without missing dependencies.

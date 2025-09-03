@@ -1,0 +1,112 @@
+Document 2 COMPLETE AI AGENT IMPLEMENTATION GUIDE: LauncherScreen Logic System
+PROJECT CONTEXT (MANDATORY READ FIRST)
+Current State:
+
+Tech Stack: React 18 + TypeScript + Vite + Tailwind CSS
+Location: /Core/Launcher/ directory
+Assets: BG2.png, BG3.png in /Asset/ folder (working)
+Existing Files: LauncherScreen.tsx, LauncherHooks.tsx, LauncherBtn.tsx (port origin logic, don't rewrite)
+Constraints:
+
+File Naming: LauncherScreen* prefix mandatory
+Units: vmin for scale, % for position
+Z-order: BG=0-10, Dot=10, Gesture=40, Btn=50, Composer=60+
+NO new dependencies without permission
+NO new features beyond this guide
+PHASE-BY-PHASE IMPLEMENTATION
+PRE-PHASE: Migration (WORKING STATE: Black screen + BG + red dot + gesture)
+1. Port LauncherScreenLogicUtilsOrigin.ts (exact OriginProvider from old code)
+2. Create LauncherScreenLogicBG.tsx (BG producer, no fetch)
+3. Update LauncherScreenConfig.ts (BG2/BG3 data)
+4. Rewrite LauncherScreen.tsx (OriginProvider wrapper)
+TEST: npm run dev → BG visible, dot center, triple-tap works
+PHASE 1: Config System (WORKING STATE: TS→JSON hot-reload)
+1. LauncherScreenConfigSchema.ts (types/enums)
+2. LauncherScreenConfigValidator.ts (clamp, unique ID)
+3. LauncherScreenConfigDefaults.ts (safe values)
+4. Auto-generate Config.json from Config.ts
+TEST: Edit Config.ts → JSON updates → UI changes live
+PHASE 2: Display Composer (WORKING STATE: Same visuals via pipeline)
+1. LauncherScreenLogicDisplayComposer.ts (render hub)
+2. LauncherScreenLogicDisplayZOrderPolicy.ts (sorting)
+3. Wire Composer in host, remove direct BG mount
+TEST: Identical rendering, no performance loss
+PHASE 3: Logic 2 (WORKING STATE: Responsive placement)
+1. LauncherScreenLogic2ImageBasic.ts (scale vmin, center %, margin)
+2. Add Logic 2 config fields
+3. Debounce resize 50ms
+TEST: Smooth resize, center in bounds
+PHASE 4: Logic 2A (WORKING STATE: Auto-rotation to 90°)
+1. LauncherScreenLogic2AAnchoredRotate.ts (base/tip rotation)
+2. Resolve anchors (extend to edge if out-of-bounds)
+3. Add Logic 2A config fields
+TEST: Set base/tip → PNG rotates correctly
+PHASE 5: Logic 3+3A (WORKING STATE: Continuous motion)
+1. LauncherScreenLogic3Spin.ts + LauncherScreenLogic3AOrbit.ts
+2. LauncherScreenLogicDriverTime.ts (FPS throttle, Δt clamp)
+3. Add motion config fields
+TEST: Smooth spin/orbit, FPS throttling works
+PHASE 6: Clock (WORKING STATE: Real-time clock override)
+1. LauncherScreenLogicClockDriver.ts (modeA/B, roles)
+2. Clock priority over Spin/Orbit
+3. Add clock config fields  
+TEST: Clock hands accurate, overrides motion
+PHASE 7: Effects (WORKING STATE: Visual effects + 3D fallback)
+1. LauncherScreenLogicEffectBasic.ts (opacity, blur, etc)
+2. LauncherScreenLogicEffect3D*.ts (Three.js + fallback)
+3. Quality auto-scaling
+TEST: Effects work, 3D→2D fallback seamless
+PHASE 8: Polish (WORKING STATE: Production-ready)
+1. LauncherScreenLogicDiagnostics*.tsx (debug overlay)
+2. Error boundaries + performance monitoring
+3. Final integration
+TEST: Debug tools work, stable performance
+EXACT SPECIFICATIONS
+Units & Ranges:
+
+scalePct: 1-400, default 100
+center: 0-100%, default 50%
+marginPct: 0-50%, default 5%
+maxFps: 15-60, default 45
+rotationDeg: 0-360
+opacityPct: 0-100, default 100
+Math Functions:
+
+const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+const normalizeAngle = (deg: number) => ((deg % 360) + 360) % 360;
+File Header Format:
+
+// File: LauncherScreenLogic2ImageBasic.ts
+// IMPORT SECTION
+import { ... } from "...";
+// LOGIC SECTION
+export function applyLogic2(...) { ... }
+Error Handling Pattern:
+
+try {
+  // logic
+} catch (error) {
+  console.warn(`[Logic2] Failed for layer ${layer.id}:`, error);
+  return fallbackValue;
+}
+TESTING & VERIFICATION
+Each Phase Success:
+
+npm run dev
+# Check: 0 console errors
+# Visual: expected behavior
+# Performance: >30 FPS
+Critical Checks:
+
+BG2/BG3 positioned correctly
+Red dot at exact center
+Triple-tap toggles button
+Resize smooth, no jitter
+No memory leaks
+FORBIDDEN ACTIONS
+❌ Add dependencies beyond Three.js
+❌ Modify LauncherBtn.tsx/LauncherHooks.tsx behavior
+❌ Create features not in guide
+❌ Change file naming patterns
+❌ Use px units (use % and vmin only)
+RESULT: Next AI agent has 100% autonomous implementation guide with zero interpretation needed.
