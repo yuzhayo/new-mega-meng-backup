@@ -1,6 +1,6 @@
 /* IMPORT SECTION */
 // import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
-import LauncherScreen from "./Core/Launcher/LauncherScreen";
+import LauncherScreen from "./src/Launcher/LauncherScreen";
 // import LoginForm from "./components/Auth/LoginForm.jsx";
 // import SimplePasswordForm from "./components/Auth/SimplePasswordForm.jsx";
 
